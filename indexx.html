@@ -1,0 +1,899 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Self Focus System</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700;800&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <style>
+    :root{
+      --bg:#f5f5f5; --card:#fff; --muted:#8b8b8b; --accent:#4ade80; --accent-600:#16a34a; --text:#111; --shadow:0 6px 18px rgba(16,24,40,0.06);
+      --radius:12px; --glass:rgba(255,255,255,0.6);
+    }
+    html,body{height:100%;}
+    body{font-family:Inter,system-ui,Segoe UI,Roboto,"Helvetica Neue",Arial; margin:0; background:var(--bg); color:var(--text); -webkit-font-smoothing:antialiased; -moz-osx-font-smoothing:grayscale}
+    body.dark{--bg:#111; --card:#222; --muted:#aaaaaa; --accent:#39ff6b; --accent-600:#00ff37; --text:#eaeaea; --shadow:0 8px 30px rgba(0,0,0,0.6);} 
+
+    .app{width:100%; max-width:none; margin:0 auto; padding:20px; display:grid; grid-template-columns: 1fr; gap:20px}
+    header{grid-column:1/-1; display:flex; align-items:center; justify-content:space-between; gap:12px}
+    .title{display:flex; gap:12px; align-items:center}
+    .brand{font-weight:700; font-size:18px}
+    .month{color:var(--muted)}
+    .controls{display:flex; gap:12px; align-items:center}
+
+    .card{background:var(--card); border-radius:var(--radius); box-shadow:var(--shadow); padding:14px}
+    .tracker{overflow:auto}
+
+    /* Habit grid */
+#habitsList .row{font-size:15px;}
+    .tracker-grid{display:grid; grid-template-columns: 20% 80%; gap:12px}
+    .left-col{min-width:200px}
+    .grid-wrap{overflow:auto}
+    table{border-collapse:collapse; width:100%; font-size:13px}
+    th,td{padding:4px 2px; text-align:center; border-bottom:1px solid rgba(0,0,0,0.04); min-width:20px;}
+    body.dark th, body.dark td{border-bottom-color:rgba(255,255,255,0.03)}
+    th.left, td.left{text-align:left; padding-left:12px}
+    th.sticky{position:sticky; left:0; background:linear-gradient(180deg,var(--card),var(--card)); z-index:5}
+
+    td.checkbox{min-width:36px}
+    input[type=checkbox]{width:18px; height:18px}
+
+    /* compact on small screens */
+    @media (max-width:900px){
+      .app{grid-template-columns:1fr; padding:12px}
+      .card.right{order:3}
+      .grid-wrap{overflow:auto; -webkit-overflow-scrolling:touch}
+      .tracker-grid{grid-template-columns:1fr}
+    }
+
+    /* Header controls */
+    .toggle{display:inline-flex; align-items:center; gap:8px}
+    .switch{width:46px; height:26px; border-radius:999px; background:rgba(0,0,0,0.08); position:relative; padding:3px; cursor:pointer}
+    .knob{width:20px; height:20px; border-radius:50%; background:#fff; transform:translateX(0); transition:all .22s}
+    body.dark .switch{background:rgba(57,255,107,0.12)}
+    body.dark .knob{background:#0b0b0b}
+
+    /* controls */
+    .muted{color:var(--muted); font-size:13px}
+
+    /* streaks */
+    .streaks{display:flex; gap:12px; flex-wrap:wrap}
+    .streak{display:flex; gap:8px; align-items:center; padding:8px 10px; border-radius:10px; background:linear-gradient(180deg, rgba(74,222,128,0.08), rgba(74,222,128,0.02)); font-weight:600}
+
+    /* analytics */
+    .analytics{display:flex; flex-direction:column; gap:12px}
+    .habit-row{display:flex; gap:8px; align-items:center; justify-content:space-between}
+    .bar{height:10px; background:rgba(0,0,0,0.06); border-radius:999px; overflow:hidden; flex:1; margin-left:8px}
+    .bar > i{display:block; height:100%; width:0; background:linear-gradient(90deg,var(--accent),var(--accent-600)); border-radius:999px; transition:width 700ms ease}
+
+    /* edit modal */
+    .modal{position:fixed; inset:0; display:none; align-items:center; justify-content:center; background:rgba(2,6,23,0.4); z-index:80}
+    .modal.open{display:flex}
+    .modal .inner{width:520px; max-width:94%; background:var(--card); padding:18px; border-radius:12px}
+    .habit-list{display:flex; flex-direction:column; gap:8px; margin-top:10px}
+    .habit-item{display:flex; gap:8px; align-items:center}
+    .btn{padding:8px 12px; border-radius:8px; background:var(--accent); color:#072; font-weight:600; cursor:pointer; border:none}
+    .btn.ghost{background:transparent; color:var(--text); border:1px solid rgba(0,0,0,0.06)}
+
+    footer{grid-column:1/-1; text-align:center; color:var(--muted); margin-top:12px}
+
+    /* small helpers */
+    .row{display:flex; gap:12px; align-items:center}
+    .muted-2{font-size:12px; color:var(--muted)}
+
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header>
+      <div class="title">
+        <div class="brand">🟢 Self Focus System</div>
+        <div class="month" id="monthLabel"></div>
+      </div>
+      <div class="controls">
+        <div class="muted">Sync: <span id="sync-status">off</span></div>
+        <div class="toggle">
+          <div class="muted">Dark</div>
+          <div class="switch" id="themeSwitch" role="button" tabindex="0"><div class="knob" id="knob"></div></div>
+        </div>
+        <button class="btn" id="editBtn">Edit Habits</button>
+      </div>
+    </header>
+
+    <main>
+      <section class="card tracker">
+        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:10px">
+          <div style="font-weight:700">Monthly Habit Tracker</div>
+          <div class="muted-2">Compact, google-sheets style • Scroll horizontally on mobile</div>
+        </div>
+
+        <div class="tracker-grid">
+          <div class="left-col card" style="padding:8px">
+            <div style="font-weight:700; margin-bottom:8px">Habits</div>
+            <div id="habitsList"></div>
+            <div style="margin-top:12px">
+              <small class="muted">Add emoji/short name for each habit. Saved locally.</small>
+            </div>
+          </div>
+
+          <div class="grid-wrap">
+            <div id="gridContainer"></div>
+          </div>
+        </div>
+      </section>
+
+      <section style="margin-top:12px">
+        <div class="card" style="padding:12px">
+          <div style="display:flex; align-items:center; justify-content:space-between">
+            <div style="font-weight:700">Streaks</div>
+            <div class="muted">Auto-updates when you toggle</div>
+          </div>
+          <div id="streaks" style="margin-top:12px" class="streaks"></div>
+        </div>
+
+        <!-- Weekly + Analytics side by side -->
+        <div style="display:flex; gap:20px; margin-top:20px; align-items:stretch;">
+          <div style="flex-basis:60%; max-width:60%;">
+            <div class="card" style="padding:12px; height:260px; overflow:hidden;">
+              <div style="display:flex; align-items:center; justify-content:space-between">
+                <div style="font-weight:700">Weekly Progress</div>
+                <div class="muted">By week (auto)</div>
+              </div>
+              <canvas id="weeklyChart" style="height:200px; width:100%; margin-top:10px"></canvas>
+            </div>
+          </div>
+
+          <div style="flex-basis:40%; max-width:40%;">
+            <div class="card" style="padding:12px; height:260px; overflow:hidden;">
+              <div style="display:flex; align-items:center; justify-content:space-between">
+                <div style="font-weight:700">Analytics</div>
+                <div class="muted">Sort by <select id="sortSelect"><option value="default">Default</option><option value="progress">Progress</option><option value="completed">Completed</option></select></div>
+              </div>
+
+              <!-- SCROLLABLE ANALYTICS -->
+              <div id="analyticsPanel" style="margin-top:12px; max-height:180px; overflow-y:auto; padding-right:6px;" class="analytics"></div>
+
+              <div style="margin-top:12px; display:flex; gap:8px; align-items:center">
+                <button class="btn" id="exportBtn">Export CSV</button>
+                <button class="btn ghost" id="clearMonth">Clear Month</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+<section class="card" style="margin-top:20px; padding:16px; text-align:center;">
+  <div style="margin-bottom:10px;">
+    <select id="quoteCategory" style="padding:6px 10px; border-radius:6px; border:1px solid rgba(0,0,0,0.1); background:var(--card); color:var(--text);">
+      <option value="all">All</option>
+      <option value="fitness">Fitness</option>
+      <option value="study">Study</option>
+      <option value="discipline">Discipline</option>
+    </select>
+  </div>
+  <div id="motivationQuote" style="font-size:18px; font-weight:600; line-height:1.4; opacity:0; transition:opacity 0.8s;">
+    Loading quote...
+  </div>
+  <button class="btn" id="newQuoteBtn" style="margin-top:12px;">New Quote</button>
+</section>
+
+    <footer>Self Focus System © 2025</footer>
+  </div>
+
+  <!-- Edit Modal -->
+  <div class="modal" id="modal">
+    <div class="inner card">
+      <div style="display:flex; align-items:center; justify-content:space-between">
+        <div style="font-weight:700">Edit Habits</div>
+        <div style="display:flex; gap:8px"><button class="btn" id="addHabitBtn">+ Add</button><button class="btn ghost" id="closeModal">Close</button></div>
+      </div>
+      <div class="habit-list" id="habitEditor"></div>
+    </div>
+  </div>
+
+  <script>
+    (()=>{
+
+      /* —————————————— UTILITIES —————————————— */
+
+      const $ = (id)=>document.getElementById(id);
+      const today = new Date();
+      const currentMonthKey = (d=new Date()) => `${d.getFullYear()}_${String(d.getMonth()+1).padStart(2,'0')}`;
+      const DAYS_IN_MONTH = (y,m)=> new Date(y,m,0).getDate();
+      const monthName = (d=new Date()) => d.toLocaleString(undefined,{month:'long', year:'numeric'});
+
+      /* —————————————— LOCAL STORAGE KEYS —————————————— */
+
+      const THEME_KEY = 'sfs_theme';
+      const HABITS_KEY = 'sfs_habits';
+      const MONTH_KEY = 'sfs_saved_month';
+      const ARCHIVE_PREFIX = 'sfs_archive_';
+      const DATA_PREFIX = 'sfs_data_';
+      const SYNC_ON_KEY = 'sfs_sync_on';
+      const SHEET_ENDPOINT_KEY = 'sfs_sheet_endpoint';
+
+      /* —————————————— DEFAULT HABITS —————————————— */
+
+      const DEFAULT_HABITS = ['🏃 Run','🧘 Meditate','📚 Read'];
+
+      /* —————————————— STATE —————————————— */
+
+      let habits = JSON.parse(localStorage.getItem(HABITS_KEY) || 'null') || DEFAULT_HABITS.slice();
+      let syncOn = localStorage.getItem(SYNC_ON_KEY) === 'true';
+      let sheetEndpoint = localStorage.getItem(SHEET_ENDPOINT_KEY) || '';
+
+      /* —————————————— THEME —————————————— */
+
+      function initTheme(){
+        const theme = localStorage.getItem(THEME_KEY) || 'light';
+        if(theme === 'dark') document.body.classList.add('dark');
+        updateThemeUI();
+      }
+      function toggleTheme(){
+        document.body.classList.toggle('dark');
+        const isDark = document.body.classList.contains('dark');
+        localStorage.setItem(THEME_KEY, isDark? 'dark':'light');
+        updateThemeUI();
+      }
+      function updateThemeUI(){
+        const isDark = document.body.classList.contains('dark');
+        $('knob').style.transform = isDark ? 'translateX(20px)' : 'translateX(0)';
+      }
+
+      /* —————————————— MONTH TRANSITION LOGIC —————————————— */
+
+      const thisMonthKey = currentMonthKey();
+      const savedMonth = localStorage.getItem(MONTH_KEY);
+
+      function migrateIfMonthChanged(){
+        if(savedMonth && savedMonth !== thisMonthKey){
+          const oldKey = DATA_PREFIX + savedMonth;
+          const archiveKey = ARCHIVE_PREFIX + savedMonth;
+          if(localStorage.getItem(oldKey)){
+            localStorage.setItem(archiveKey, localStorage.getItem(oldKey));
+          }
+          localStorage.removeItem(oldKey);
+        }
+        localStorage.setItem(MONTH_KEY, thisMonthKey);
+      }
+
+      /* —————————————— LOAD / SAVE MONTH DATA —————————————— */
+
+      function loadMonthData(){
+        const key = DATA_PREFIX + thisMonthKey;
+        const raw = localStorage.getItem(key);
+        const days = DAYS_IN_MONTH(today.getFullYear(), today.getMonth()+1);
+
+        if(!raw){
+          const data = {habits: habits.map(()=>({days:Array(days).fill(false), streak:0, maxStreak:0, lastDoneDay:null})) };
+          localStorage.setItem(key, JSON.stringify(data));
+          return data;
+        }
+
+        const data = JSON.parse(raw);
+
+        if(data.habits.length !== habits.length){
+          const newArr = habits.map((h,i)=> data.habits[i] || {days:Array(days).fill(false), streak:0, maxStreak:0, lastDoneDay:null});
+          data.habits = newArr;
+          localStorage.setItem(key, JSON.stringify(data));
+        }
+
+        for(let h of data.habits){
+          if(h.days.length !== days) h.days = h.days.slice(0,days).concat(Array(Math.max(0, days - h.days.length)).fill(false));
+        }
+        return data;
+      }
+
+      function saveMonthData(data){
+        const key = DATA_PREFIX + thisMonthKey;
+        localStorage.setItem(key, JSON.stringify(data));
+      }
+
+      /* —————————————— RENDER HABITS LIST —————————————— */
+
+      function renderHabitsList(){
+        const el = $('habitsList'); 
+        el.innerHTML='';
+        habits.forEach((h,i)=>{
+          const div = document.createElement('div');
+          div.className='row muted-2';
+          div.innerHTML = `<div style='font-weight:600'>${h}</div><div style='margin-left:auto; color:var(--muted)'>#${i+1}</div>`;
+          el.appendChild(div);
+        })
+      }
+
+      /* —————————————— GRID —————————————— */
+
+      let monthData = null;
+
+      function renderGrid(){
+        monthData = loadMonthData();
+        const days = monthData.habits[0].days.length;
+
+        $('monthLabel').textContent = monthName(today);
+
+        const container = $('gridContainer'); 
+        container.innerHTML='';
+
+        const table = document.createElement('table');
+        const thead = document.createElement('thead');
+        
+        const weekRow = document.createElement('tr');
+        const emptyWeekTh = document.createElement('th'); 
+        emptyWeekTh.className='sticky left'; 
+        emptyWeekTh.textContent='';
+        weekRow.appendChild(emptyWeekTh);
+        
+        const totalDays = days;
+        const totalWeeks = Math.ceil(totalDays/7);
+        for(let w=0; w<totalWeeks; w++){
+          const weekTh = document.createElement('th');
+          weekTh.colSpan = Math.min(7, totalDays - w*7);
+          weekTh.textContent = `Week ${w+1}`;
+          weekTh.style.fontWeight = '700';
+          weekTh.style.background = 'rgba(0,0,0,0.05)';
+          weekRow.appendChild(weekTh);
+        }
+        thead.appendChild(weekRow);
+
+        const tr = document.createElement('tr');
+        const leftTh = document.createElement('th'); 
+        leftTh.className='sticky left'; 
+        leftTh.textContent='Habit'; 
+        tr.appendChild(leftTh);
+
+        for(let d=1; d<=days; d++){ 
+          const isWeekEnd = d % 7 === 0;
+          const th = document.createElement('th'); 
+          th.textContent = d; 
+          if(isWeekEnd) th.style.borderRight = '2px solid rgba(0,0,0,0.3)'; 
+          tr.appendChild(th);
+        }
+        thead.appendChild(tr);
+
+        table.appendChild(thead);
+
+        const tbody = document.createElement('tbody');
+        monthData.habits.forEach((hObj,hi)=>{
+          const row = document.createElement('tr');
+          const nameTd = document.createElement('td'); 
+          nameTd.className='left sticky'; 
+          nameTd.textContent = habits[hi]; 
+          row.appendChild(nameTd);
+
+          for(let d=0; d<days; d++){ 
+            const isWeekEnd = (d+1) % 7 === 0;
+            const td = document.createElement('td'); td.className='checkbox';
+
+            const cb = document.createElement('input'); 
+            cb.type='checkbox'; 
+            cb.checked = !!hObj.days[d];
+            cb.dataset.h = hi; 
+            cb.dataset.d = d;
+            cb.addEventListener('change', onToggle);
+            td.appendChild(cb);
+
+            if(isWeekEnd) td.style.borderRight = '2px solid rgba(0,0,0,0.3)';
+            row.appendChild(td);
+          }
+          tbody.appendChild(row);
+        });
+        table.appendChild(tbody);
+
+        container.appendChild(table);
+
+        container.style.overflow = 'auto';
+        computeAllStreaks();
+        renderStreaks();
+        renderAnalytics();
+        updateChart();
+      }
+
+      /* —————————————— TOGGLE CHECKBOX —————————————— */
+
+      function onToggle(e){
+        const hi = Number(e.target.dataset.h);
+        const d = Number(e.target.dataset.d);
+
+        monthData.habits[hi].days[d] = e.target.checked;
+
+        recomputeStreakForHabit(hi);
+        saveMonthData(monthData);
+
+        renderStreaks();
+        renderAnalytics();
+        updateChart();
+
+        if(syncOn && sheetEndpoint) pushToSheet(hi);
+      }
+
+      /* —————————————— STREAKS —————————————— */
+
+      function recomputeStreakForHabit(hi){
+        const arr = monthData.habits[hi].days;
+
+        let last = null;
+        for(let i=arr.length-1;i>=0;i--){ 
+          if(arr[i]){ last = i+1; break; }
+        }
+        monthData.habits[hi].lastDoneDay = last;
+
+        let streak = 0;
+        if(last !== null){
+          for(let i=last-1;i>=0;i--){ 
+            if(arr[i]) streak++; 
+            else break; 
+          }
+        }
+        monthData.habits[hi].streak = streak;
+
+        let maxS = 0; 
+        let cur = 0;
+        for(let i=0;i<arr.length;i++){
+          if(arr[i]){ cur++; maxS = Math.max(maxS, cur);} 
+          else cur=0;
+        }
+        monthData.habits[hi].maxStreak = maxS;
+      }
+
+      function computeAllStreaks(){
+        for(let i=0;i<monthData.habits.length;i++) 
+          recomputeStreakForHabit(i);
+        saveMonthData(monthData);
+      }
+
+      function renderStreaks(){
+        const el = $('streaks'); 
+        el.innerHTML='';
+
+        monthData.habits.forEach((hObj,hi)=>{
+          const div = document.createElement('div'); 
+          div.className='streak';
+          div.innerHTML = `
+            <span style='font-size:18px'>🔥</span>
+            <div style='display:flex;flex-direction:column'>
+              <div style='font-weight:700'>${habits[hi]}</div>
+              <div style='font-size:12px;color:var(--muted)'>
+                Current: ${hObj.streak} • Best: ${hObj.maxStreak}
+              </div>
+            </div>`;
+          el.appendChild(div);
+        })
+      }
+
+      /* —————————————— ANALYTICS —————————————— */
+
+      function renderAnalytics(sortMode='default'){
+        const el = $('analyticsPanel'); 
+        el.innerHTML = '';
+
+        const days = monthData.habits[0].days.length;
+
+        const items = monthData.habits.map((hObj,i)=>{
+          const completed = hObj.days.filter(Boolean).length;
+          const pct = Math.round((completed/days)*100);
+          return {i, name:habits[i], completed, pct, goal:days}
+        });
+
+        if(sortMode === 'progress') items.sort((a,b)=>b.pct - a.pct);
+        if(sortMode === 'completed') items.sort((a,b)=>b.completed - a.completed);
+
+        items.forEach(it=>{
+          const row = document.createElement('div'); 
+          row.className='habit-row';
+
+          row.innerHTML = `
+            <div style='min-width:120px; font-weight:600'>${it.name}</div>
+            <div style='display:flex; align-items:center; gap:8px; flex:1'>
+              <div class='muted-2'>${it.completed}/${it.goal}</div>
+              <div class='bar'><i style='width:0%'></i></div>
+              <div style='min-width:36px; text-align:right; font-weight:700'>${it.pct}%</div>
+            </div>
+          `;
+
+          el.appendChild(row);
+
+          setTimeout(()=>{ 
+            row.querySelector('i').style.width = it.pct + '%' 
+          }, 50);
+        })
+      }
+
+      /* —————————————— WEEKLY CHART —————————————— */
+
+      let chart = null;
+
+     function updateChart() {
+  const days = monthData.habits[0].days.length;
+
+  // For each day, calculate percentage of habits completed
+  const dailyPercents = [];
+  for (let d = 0; d < days; d++) {
+    let total = monthData.habits.length;
+    let done = 0;
+
+    monthData.habits.forEach(h => {
+      if (h.days[d]) done++;
+    });
+
+    const pct = total ? Math.round((done / total) * 100) : 0;
+    dailyPercents.push(pct);
+  }
+
+  // Labels = day numbers
+  const labels = dailyPercents.map((_, i) => `Day ${i + 1}`);
+
+  const ctx = $('weeklyChart').getContext('2d');
+  if (chart) chart.destroy();
+
+  chart = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [{
+        label: 'Daily Completion %',
+        data: dailyPercents,
+        fill: true,
+        tension: 0.35,
+        backgroundColor: 'rgba(74,222,128,0.14)',
+        borderColor: 'var(--accent)',
+        pointRadius: 3
+      }]
+    },
+    options: {
+      responsive: true,
+      plugins: { legend: { display: false } },
+      scales: {
+        y: { beginAtZero: true, max: 100 },
+        x: { ticks: { maxRotation: 0, autoSkip: true, maxTicksLimit: 10 } }
+      }
+    }
+  });
+}
+
+
+     
+
+      /* —————————————— EDIT HABITS MODAL —————————————— */
+
+      function openModal(){
+        $('modal').classList.add('open'); 
+        renderHabitEditor();
+      }
+
+      function closeModal(){ 
+        $('modal').classList.remove('open'); 
+      }
+
+      function renderHabitEditor(){
+        const el = $('habitEditor'); 
+        el.innerHTML='';
+
+        habits.forEach((h,i)=>{
+          const row = document.createElement('div'); 
+          row.className='habit-item';
+
+          row.innerHTML = `
+            <input data-i='${i}' style='flex:1;padding:8px;border-radius:8px;border:1px solid rgba(0,0,0,0.06); background:transparent' value='${h}'/>
+            <button class='btn ghost' data-del='${i}'>Delete</button>
+          `;
+
+          el.appendChild(row);
+        });
+
+        el.querySelectorAll('input').forEach(inp=> 
+          inp.addEventListener('blur', (e)=>{
+            const i=Number(e.target.dataset.i);
+            habits[i]=e.target.value.trim()||'Untitled';
+            localStorage.setItem(HABITS_KEY, JSON.stringify(habits));
+            renderHabitsList(); 
+            renderGrid(); 
+          })
+        );
+
+        el.querySelectorAll('[data-del]').forEach(b=> 
+          b.addEventListener('click', (ev)=>{
+            const i=Number(ev.target.dataset.del);
+            habits.splice(i,1);
+            localStorage.setItem(HABITS_KEY, JSON.stringify(habits));
+            renderHabitsList(); 
+            renderGrid(); 
+            renderHabitEditor();
+          })
+        );
+      }
+
+      function addHabit(){ 
+        habits.push('✨ New Habit'); 
+        localStorage.setItem(HABITS_KEY, JSON.stringify(habits));
+        renderHabitsList(); 
+        renderGrid(); 
+        renderHabitEditor(); 
+      }
+
+      /* —————————————— EXPORT CSV —————————————— */
+
+      function exportCSV(){
+        const days = monthData.habits[0].days.length;
+
+        let csv = 'Habit,' + Array.from({length:days},(_,i)=>i+1).join(',') + ',Completed\n';
+
+        monthData.habits.forEach((hObj,i)=>{
+          const row = [
+            habits[i], 
+            ...hObj.days.map(b=> b? '1':'0'), 
+            hObj.days.filter(Boolean).length
+          ];
+          csv += row.join(',') + '\n';
+        });
+
+        const blob = new Blob([csv], {type:'text/csv'});
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a'); 
+        a.href = url; 
+        a.download = `sfs_${thisMonthKey}.csv`; 
+        a.click(); 
+        URL.revokeObjectURL(url);
+      }
+
+      /* —————————————— CLEAR MONTH —————————————— */
+
+      function clearMonth(){ 
+        if(!confirm('Clear all progress for this month?')) return;
+        const days = monthData.habits[0].days.length;
+
+        monthData.habits.forEach(h=>{
+          h.days = Array(days).fill(false); 
+          h.streak=0; 
+          h.maxStreak=0; 
+          h.lastDoneDay=null;
+        });
+
+        saveMonthData(monthData); 
+        renderGrid(); 
+      }
+
+      /* —————————————— GOOGLE SHEETS SYNC (OPTIONAL) —————————————— */
+
+      async function pushToSheet(hi){
+        if(!sheetEndpoint) return;
+        try{
+          const payload = { 
+            month: thisMonthKey, 
+            habitIndex:hi, 
+            habitName:habits[hi], 
+            data: monthData.habits[hi] 
+          };
+          await fetch(sheetEndpoint, {
+            method:'POST', 
+            headers:{'Content-Type':'application/json'}, 
+            body: JSON.stringify(payload)
+          });
+          $('sync-status').textContent = 'on';
+        }catch(err){ 
+          console.warn('Sync failed', err); 
+          $('sync-status').textContent = 'err'; 
+        }
+      }
+
+      async function pullFromSheet(){
+        if(!sheetEndpoint) return;
+        try{
+          const res = await fetch(sheetEndpoint + '?month=' + thisMonthKey);
+          if(!res.ok) return;
+
+          const j = await res.json();
+
+          if(j.habits && j.habitsMeta){
+            habits = j.habitsMeta.slice();
+            localStorage.setItem(HABITS_KEY, JSON.stringify(habits));
+
+            const key = DATA_PREFIX + thisMonthKey; 
+            localStorage.setItem(key, JSON.stringify({habits:j.habits}));
+
+            renderHabitsList(); 
+            renderGrid();
+          }
+        }catch(e){ console.warn('Pull failed', e); }
+      }
+
+      /* —————————————— SORTING —————————————— */
+
+      $('sortSelect').addEventListener('change', ()=>{ 
+        renderAnalytics($('sortSelect').value); 
+      });
+
+      /* —————————————— EVENT LISTENERS —————————————— */
+
+      $('themeSwitch').addEventListener('click', toggleTheme);
+      $('editBtn').addEventListener('click', openModal);
+      $('closeModal').addEventListener('click', closeModal);
+      $('addHabitBtn').addEventListener('click', addHabit);
+      $('exportBtn').addEventListener('click', exportCSV);
+      $('clearMonth').addEventListener('click', clearMonth);
+
+      $('themeSwitch').addEventListener('keydown', (e)=>{
+        if(e.key==='Enter' || e.key===' ') toggleTheme();
+      });
+
+      /* —————————————— QUOTES —————————————— */
+      const quotes = {
+        all:[
+          "Success is the sum of small efforts repeated day in and day out.",
+          "Discipline turns dreams into reality.",
+          "Focus on progress, not perfection.",
+          "Small steps every day lead to big results.",
+          "Your future is created by what you do today, not tomorrow.",
+          "Stay consistent. Even slow progress is progress.",
+          "Motivation gets you started. Habit keeps you going.",
+          "You don’t need to be perfect. Just be consistent.",
+          "Do something today your future self will thank you for.",
+          
+          "Push yourself because no one else is going to do it for you.",
+          "The body achieves what the mind believes.",
+          "Train insane or remain the same.",
+          "Sweat is fat crying.",
+          "Discipline is choosing what you want most over what you want now.",
+          "Success begins at the end of your comfort zone.",
+          "Winners are made when no one is watching.",
+          "Pain is temporary, greatness is forever.",
+          "Failure is the shadow of success — follow it.",
+          "Don’t count the days, make the days count.",
+          "Your only limit is the one you accept.",
+          "Small steps every day lead to massive results.",
+          "Comfort is the enemy of progress.",
+          "Work until your idols become your rivals.",
+          "Consistency turns dreams into reality.",
+          "Your future self is watching — don’t disappoint him.",
+          "Fall seven times, stand up eight.",
+          "Success is rented, and the rent is due every day.",
+          "Hustle in silence, let success make the noise.",
+          "Your dream doesn’t work unless you do.",
+          "Suffer the pain of discipline or suffer the pain of regret.",
+          "Excuses build bridges to nowhere.",
+          "Nothing changes if nothing changes.",
+          "Hard work beats talent when talent doesn’t work hard.",
+          "Prove yourself to yourself, not to the world.",
+          "Fight for the life you want.",
+          "It always seems impossible until it’s done.",
+          "Every champion was once a beginner.",
+          "Great things take time — keep going.",
+          "You don’t grow when you’re comfortable.",
+
+          "Hope is a luxury for the weak — I rely on power.",
+          "While they dream of victory, I prepare to take it.",
+          "I am not destined to win — I’m determined to.",
+          "The world fears monsters… because monsters never hesitate.",
+          "Strength is not given. It is taken.",
+          "Mercy is a chain for those too afraid to rise.",
+          "I don’t chase greatness — I become the reason it exists.",
+          "If the world stands in my way, I’ll burn the world.",
+          "Heroes wait for chances. I create consequences.",
+          "Only the ruthless rewrite fate.",
+          "Fear me, hate me, break me — I rise regardless.",
+          "They call me villain because I refuse to kneel.",
+          "Power belongs not to the chosen, but to the willing.",
+          "The weak pray for miracles; the strong become them.",
+          "My ambition is louder than their screams.",
+
+          "I’m not the strongest, I’m not the fastest, and I’m not the smartest… but every time life tried to break me, I stood back up. Not because I wanted to, but because something inside me refused to stay down. Maybe that’s what strength really is.",
+          "There were days I couldn’t look at myself… days when giving up felt easier than trying. But even then, a tiny spark inside me refused to die. That spark became my reason. My hope. And now, I’ll protect it with everything I have.",
+          "I’ve been betrayed, forgotten, and underestimated… but all of it shaped me. Every scar holds a story, every tear holds a lesson. I may not be who I used to be, but I’m becoming someone stronger — someone unstoppable.",
+          "You think I’m standing here because I’m fearless? No. I’m terrified. But I’m even more terrified of regret. That’s why I’ll keep moving forward, shaking, bleeding, crying — because stopping now means losing everything I’ve fought for.",
+          "I lost people I cared about. I lost battles I thought I would win. I lost pieces of myself along the way… but I never lost my will. And as long as that remains, I will rise again, no matter how many times I fall.",
+          "I was once a person who begged for acceptance. But not anymore. I’ve learned that my worth isn’t defined by who stays or who leaves — it’s defined by how fiercely I stand on my own two feet.",
+          "Every night I questioned myself — ‘Why am I still fighting?’ And every morning, I found the answer: because quitting would hurt more than trying. Because I promised myself I’d never go back to who I used to be.",
+          "I know the darkness well. I’ve walked through it, cried in it, screamed in it. But I never let it swallow me. Because even in the darkest nights, I held onto one belief… tomorrow can still be mine.",
+          "I’m tired of pretending I’m fine. I’m tired of carrying everything alone. But even if the world doesn’t see my struggles… I will not give up. My strength comes from surviving battles nobody knows about.",
+          "There were moments I thought I had nothing left. But then I realized — I still had one thing: my resolve. And as long as that exists, I can rebuild everything else from scratch.",
+          "They broke me. They shattered my trust, crushed my hope, and left me to drown in my doubts… but they forgot one thing — broken things can be remade stronger than before.",
+          "I used to seek blessings, luck, and miracles. But now I know… the only real miracle is the one you create when you refuse to give up, no matter how impossible everything seems.",
+          "I’ve failed more times than I’ve succeeded. I’ve cried more times than I’ve smiled. But every time I fell, I rose with a new lesson carved into my soul. That’s why I’ll win — because I’ve earned every piece of my strength.",
+          "No matter how heavy my burdens became, I carried them. No matter how loud the doubts were, I silenced them. The world tried to break me, but all it did was teach me how to stand unshakable.",
+          "People see my strength now, but they don’t know the battles I fought in silence. They don’t know the nights I questioned my worth. They don’t know the storms I survived alone. And that’s why I’m proud of who I am today.",
+          "I’ve been hurt, I’ve been rejected, I’ve been judged… but I refuse to let pain define me. I’m writing my own story now — and this time, I’m the hero.",
+          "Even when my heart was breaking, I kept moving. Even when my hands were shaking, I kept fighting. I didn’t do it because I was strong… I did it because I deserved a future worth fighting for.",
+          "I’m done apologizing for who I am. I’ve survived storms most people will never understand. If that makes me different, if that makes me too much — so be it. I won’t dim my light for anyone.",
+          "The world may not believe in me. It never has. But that’s fine… because I’ve finally learned to believe in myself, and that’s the only belief I need.",
+          "I used to think being alone made me weak. Now I know — it made me powerful. Because when you learn to stand alone, nothing and no one can ever break you again.",
+
+          "Every action you take is a vote for the person you want to become."
+        ],
+        fitness:[
+          "Push yourself because no one else is going to do it for you.",
+          "The body achieves what the mind believes.",
+          "Train insane or remain the same.",
+          "Sweat is fat crying."
+        ],
+        study:[
+          "Study now so you can enjoy later.",
+          "Small study steps lead to big academic gains.",
+          "Focus on learning, not just finishing.",
+          "Your future self will thank you for studying today."
+        ],
+        discipline:[
+          "Discipline is choosing what you want most over what you want now.",
+          "Consistency is harder than perfection but far more effective.",
+          "If you can conquer your mind, you can conquer anything."
+        ]
+      };
+
+      function showRandomQuote(){
+        const cat = $('quoteCategory') ? $('quoteCategory').value : 'all';
+        const list = cat === 'all' ? [...quotes.all, ...quotes.fitness, ...quotes.study, ...quotes.discipline] : quotes[cat];
+        const q = list[Math.floor(Math.random()*list.length)];
+        const box = $('motivationQuote');
+        if(!box) return;
+        box.style.opacity = 0;
+        setTimeout(()=>{ box.textContent = q; box.style.opacity = 1; }, 300);
+      }
+      
+      const newBtn = document.getElementById('newQuoteBtn');
+      if(newBtn) newBtn.addEventListener('click', showRandomQuote);
+      const qc = document.getElementById('quoteCategory');
+      if(qc) qc.addEventListener('change', showRandomQuote);
+
+      showRandomQuote();
+
+      /* —————————————— INITIALIZE —————————————— */
+
+      initTheme();
+      migrateIfMonthChanged();
+      renderHabitsList();
+      renderGrid();
+
+      if(syncOn && sheetEndpoint) pullFromSheet();
+
+      /* —————————————— DRAG TO SCROLL —————————————— */
+
+      const gridWrap = document.querySelector('.grid-wrap'); 
+      let posX=0,down=false,startX=0,scrollLeft=0;
+
+      gridWrap.addEventListener('mousedown', e=>{
+        down=true; 
+        startX=e.pageX - gridWrap.offsetLeft; 
+        scrollLeft = gridWrap.scrollLeft; 
+        gridWrap.style.cursor='grabbing';
+      });
+
+      document.addEventListener('mouseup', ()=>{
+        down=false; 
+        gridWrap.style.cursor='auto'; 
+      });
+
+      document.addEventListener('mousemove', e=>{
+        if(!down) return; 
+        e.preventDefault(); 
+        const x = e.pageX - gridWrap.offsetLeft; 
+        const walk = (x - startX); 
+        gridWrap.scrollLeft = scrollLeft - walk;
+      });
+
+      /* —————————————— DEBUG —————————————— */
+
+      window.sfsData = ()=> JSON.parse(localStorage.getItem(DATA_PREFIX + thisMonthKey));
+
+      window.SFS = { 
+        setSheetEndpoint: (url)=>{ 
+          sheetEndpoint = url; 
+          localStorage.setItem(SHEET_ENDPOINT_KEY, url); 
+          alert('Sheet endpoint saved.'); 
+        }, 
+        enableSync: ()=>{ 
+          syncOn=true; 
+          localStorage.setItem(SYNC_ON_KEY,'true'); 
+          $('sync-status').textContent='on'; 
+        }, 
+        disableSync: ()=>{ 
+          syncOn=false; 
+          localStorage.setItem(SYNC_ON_KEY,'false'); 
+          $('sync-status').textContent='off'; 
+        } 
+      };
+
+    })();
+  </script>
+</body>
+</html>
